@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>智慧型動態排課系統 (加強分隔線版)</title>
+    <title>東海電機排課模擬器</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.9.4/css/bulma.min.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     
@@ -106,6 +106,7 @@
             transition: all 0.2s;
             box-shadow: 0 1px 2px rgba(0,0,0,0.05);
             user-select: none;
+            position: relative;
         }
         .course-card.draggable-card { cursor: grab; } 
         
@@ -123,6 +124,21 @@
         .card-title { font-weight: 700; font-size: 13px; color: #2c3e50; }
         .tag-split { background: #ffeaa7; color: #d35400; font-size: 10px; padding: 1px 4px; border-radius: 3px; font-weight: bold; }
         
+        /* 學期標籤樣式 */
+        .sem-tag {
+            position: absolute;
+            top: 2px;
+            right: 2px;
+            font-size: 9px;
+            padding: 1px 3px;
+            border-radius: 3px;
+            color: white;
+            font-weight: bold;
+        }
+        .sem-1 { background-color: #3498db; } /* 上 */
+        .sem-2 { background-color: #e67e22; } /* 下 */
+        .sem-3 { background-color: #9b59b6; } /* 全 */
+
         .btn-actions { display: flex; gap: 4px; margin-top: 4px; }
         .btn-actions button { flex: 1; border: none; padding: 2px; border-radius: 3px; font-size: 10px; cursor: pointer; color: white; transition: opacity 0.2s; }
 
@@ -211,7 +227,6 @@
             background: white;
         }
 
-        /* 新增：星期分隔線樣式 */
         .day-border-left {
             border-left: 2px solid #888 !important;
         }
@@ -338,9 +353,18 @@
             <div class="level-right"><button class="button is-primary is-small is-rounded" style="font-size: 0.75rem;" onclick="openModal()">+ 新增</button></div>
         </div>
 
-        <button class="button is-small is-fullwidth mb-2" style="font-size: 0.75rem;" onclick="toggleSettings()">⚙️ 顯示設定</button>
+        <button class="button is-small is-fullwidth mb-2" style="font-size: 0.75rem;" onclick="toggleSettings()">⚙️ 顯示設定 (學期切換)</button>
         
         <div id="settingsPanel" class="settings-box">
+            <div class="field mb-3">
+                <label class="label is-small">當前顯示學期</label>
+                <div class="control">
+                    <label class="radio is-small"><input type="radio" name="semView" value="1" onchange="updateSettings()"> 上學期</label>
+                    <label class="radio is-small"><input type="radio" name="semView" value="2" onchange="updateSettings()"> 下學期</label>
+                </div>
+                <p class="help">學年課(全)在任何學期都會顯示</p>
+            </div>
+            <hr class="my-2">
             <p class="help mb-2">以下設定僅影響<b>週末 (週六、日)</b>。平日固定顯示全部分組。</p>
             <label class="checkbox mr-2"><input type="checkbox" id="showSat" onchange="updateSettings()"> 週六</label>
             <label class="checkbox"><input type="checkbox" id="showSun" onchange="updateSettings()"> 週日</label>
@@ -364,7 +388,7 @@
     <div class="main-content">
         <div class="top-bar level is-mobile mb-2">
             <div class="level-left">
-                <h2 class="title is-6 mr-2" style="font-size: 1rem;">📅 排課系統</h2>
+                <h2 class="title is-6 mr-2" style="font-size: 1rem;">📅 排課系統 <span id="currentSemLabel" class="tag is-info is-light is-rounded ml-2" style="font-weight:normal;"></span></h2>
                 
                 <div id="firebaseUserDisplay">
                     <img id="userAvatar" class="user-avatar" src="" alt="">
@@ -440,6 +464,15 @@
       <div class="field"><label class="label is-small">節數</label><div class="control"><input class="input is-small" type="number" id="mCredits" value="3" min="1" max="8"></div></div>
       
       <div class="field">
+          <label class="label is-small">開課學期</label>
+          <div class="control">
+              <label class="radio is-small"><input type="radio" name="mSem" value="1"> 上學期</label>
+              <label class="radio is-small"><input type="radio" name="mSem" value="2"> 下學期</label>
+              <label class="radio is-small"><input type="radio" name="mSem" value="3" checked> 學年課(全)</label>
+          </div>
+      </div>
+
+      <div class="field">
           <label class="label is-small">課程屬性</label>
           <div class="control">
               <label class="radio is-small"><input type="radio" name="mType" value="required" onclick="toggleMIndependent(true)"> 必修</label>
@@ -484,6 +517,15 @@
         <div class="field"><label class="label is-small">節數</label>
             <div class="control"><input class="input is-small" type="number" id="eCredits" min="1" max="8"></div>
             <p class="help is-danger" id="eCreditsHelp">注意：修改節數將會清除該課程目前的排課時間。</p>
+        </div>
+
+        <div class="field">
+            <label class="label is-small">開課學期</label>
+            <div class="control">
+                <label class="radio is-small"><input type="radio" name="eSem" value="1"> 上學期</label>
+                <label class="radio is-small"><input type="radio" name="eSem" value="2"> 下學期</label>
+                <label class="radio is-small"><input type="radio" name="eSem" value="3"> 學年課(全)</label>
+            </div>
         </div>
         
         <div class="field">
@@ -674,12 +716,12 @@
     ];
 
     const DEPT_REQ_DATA = [
-        { name: "勞作", grade: 1, days: [1,2,3,4,5], periods: ['5'] },
-        { name: "英文", grade: 1, days: [1,3], periods: ['3','4'] },
-        { name: "英文", grade: 2, days: [5], periods: ['1','2'] },
-        { name: "國文", grade: 1, days: [5], periods: ['8','9'] },
-        { name: "體育", grade: 1, days: [3], periods: ['1','2'] },
-        { name: "體育", grade: 2, days: [4], periods: ['5','6'] }
+        { name: "勞作", grade: 1, days: [1,2,3,4,5], periods: ['5'], sem: 3 },
+        { name: "英文", grade: 1, days: [1,3], periods: ['3','4'], sem: 3 },
+        { name: "英文", grade: 2, days: [5], periods: ['1','2'], sem: 3 },
+        { name: "國文", grade: 1, days: [5], periods: ['8','9'], sem: 3 },
+        { name: "體育", grade: 1, days: [3], periods: ['1','2'], sem: 3 },
+        { name: "體育", grade: 2, days: [4], periods: ['5','6'], sem: 3 }
     ];
 
     let courses = JSON.parse(localStorage.getItem('courses')) || [];
@@ -689,9 +731,11 @@
     let teacherTextColors = JSON.parse(localStorage.getItem('teacherTextColors')) || {}; 
     let collapsedTeachers = JSON.parse(localStorage.getItem('collapsedTeachers')) || [];
     
+    // 更新 settings 預設值，加入 currentSemester (1=上, 2=下)
     let settings = JSON.parse(localStorage.getItem('settings')) || {
-        sat: true, sun: false, wd: [true,true,true,true], we: [true,true,true,true]
+        sat: true, sun: false, wd: [true,true,true,true], we: [true,true,true,true], currentSemester: 1
     };
+    if (!settings.currentSemester) settings.currentSemester = 1; // Migration
 
     function exportImage(type) {
         const element = document.getElementById('captureTarget');
@@ -738,9 +782,12 @@
                 document.body.style.backgroundColor = '';
                 render(); 
 
+                let semLabel = settings.currentSemester == 1 ? "上學期" : "下學期";
+                let filename = `我的課表_${semLabel}_${new Date().toISOString().slice(0,10)}`;
+
                 if (type === 'png') {
                     const link = document.createElement('a');
-                    link.download = `我的課表_${new Date().toISOString().slice(0,10)}.png`;
+                    link.download = `${filename}.png`;
                     link.href = canvas.toDataURL("image/png");
                     link.click();
                     Swal.close();
@@ -761,7 +808,7 @@
                     if (y < 0) y = 0;
 
                     doc.addImage(imgData, 'PNG', 0, y, pdfWidth, imgHeight);
-                    doc.save(`我的課表_${new Date().toISOString().slice(0,10)}.pdf`);
+                    doc.save(`${filename}.pdf`);
                     Swal.close();
                 }
             }).catch(err => {
@@ -872,6 +919,9 @@
             let conflictCount = 0;
             DEPT_REQ_DATA.forEach((req, idx) => {
                 let reqId = `dept_req_${idx}_${Date.now()}`;
+                // 校必修預設全部為學年課 (sem=3)
+                let reqSem = 3; 
+                
                 req.days.forEach(d => {
                     req.periods.forEach(p => {
                         let key = `${d}-${req.grade}-${p}`;
@@ -893,11 +943,12 @@
                     courseType: 'required',
                     isIndependent: true, 
                     isDeptReq: true, 
-                    isLocked: true   
+                    isLocked: true,
+                    semester: reqSem
                 });
             });
             courses = [...courses, ...newCourses];
-            let msg = '電機系校必修已載入';
+            let msg = '電機系校必修已載入(預設為學年課)';
             if(conflictCount > 0) msg += `，並移除了 ${conflictCount} 個衝突時段的課程回到列表`;
             Swal.fire('已載入', msg, 'success');
         }
@@ -916,14 +967,29 @@
         });
     }
 
+    // 更新計算欄位，過濾非當前學期課程
     function calculateColumnLayout(day, grade) {
         let events = [];
         let colKeyPrefix = `${day}-${grade}-`;
         let rawSlots = {}; 
+        
+        let currSem = parseInt(settings.currentSemester);
+
         PERIODS.forEach((p, idx) => {
             let key = colKeyPrefix + p.id;
-            if(schedule[key] && schedule[key].length > 0) rawSlots[idx] = schedule[key];
+            if(schedule[key] && schedule[key].length > 0) {
+                // 這裡需要過濾：只取出符合當前學期顯示的課程 ID
+                let validIds = schedule[key].filter(cId => {
+                    let c = courses.find(x => x.id === cId);
+                    if (!c) return false;
+                    let cSem = c.semester || 3;
+                    return (cSem == 3 || cSem == currSem);
+                });
+                
+                if (validIds.length > 0) rawSlots[idx] = validIds;
+            }
         });
+
         let processedCourseIds = new Set();
         Object.values(rawSlots).flat().forEach(cId => {
             if(processedCourseIds.has(cId)) return;
@@ -968,6 +1034,12 @@
             if (teacherDiff !== 0) return teacherDiff;
             return a.name.localeCompare(b.name);
         });
+        
+        // 更新標題顯示目前學期
+        const semLabel = document.getElementById('currentSemLabel');
+        if (settings.currentSemester == 1) semLabel.innerText = "上學期";
+        else if (settings.currentSemester == 2) semLabel.innerText = "下學期";
+        else semLabel.innerText = "";
 
         renderSidebar(); 
         renderTimetable(); 
@@ -981,7 +1053,15 @@
         let coursesByTeacher = {};
         let teacherOrder = [];
 
-        courses.forEach(c => {
+        let currSem = parseInt(settings.currentSemester);
+
+        // 過濾列表：只顯示符合當前學期的課程
+        let visibleCourses = courses.filter(c => {
+            let cSem = c.semester || 3;
+            return (cSem == 3 || cSem == currSem);
+        });
+
+        visibleCourses.forEach(c => {
             if (!coursesByTeacher[c.teacher]) {
                 coursesByTeacher[c.teacher] = [];
                 teacherOrder.push(c.teacher);
@@ -1038,9 +1118,16 @@
         renderSidebar();
     }
 
+    function getSemTag(sem) {
+        if (sem == 1) return `<span class="sem-tag sem-1">上</span>`;
+        if (sem == 2) return `<span class="sem-tag sem-2">下</span>`;
+        return `<span class="sem-tag sem-3">全</span>`; // Default
+    }
+
     function createCourseCard(c, processedParents) {
         let borderColor = c.isDeptReq ? '#ff0000' : (teacherColors[c.teacher] || '#ccc');
         let isLockedClass = c.isLocked ? 'is-locked' : '';
+        let semTag = getSemTag(c.semester || 3);
 
         if(c.parentId) {
             if(processedParents.has(c.parentId)) return null;
@@ -1073,7 +1160,8 @@
             });
 
             div.innerHTML = `
-                <div class="card-header"><span class="card-title">${baseName}${typeSuffix}</span><span class="tag-split">已拆分</span></div>
+                ${semTag}
+                <div class="card-header"><span class="card-title" style="padding-right:15px;">${baseName}${typeSuffix}</span><span class="tag-split">已拆分</span></div>
                 <div style="font-size:10px;color:#666;margin-bottom:2px;">${siblings[0].teacher}</div>
                 ${siblings[0].isIndependent ? '<div style="font-size:10px;color:red;font-weight:bold;">★ 獨立必修</div>' : ''}
                 <div class="split-parts-container">${partsHtml}</div>
@@ -1103,7 +1191,8 @@
             let splitBtn = ((total === 3 || total === 4) || total === 2) ? `<button class="has-background-warning-dark" onclick="splitCourse('${c.id}')">拆分</button>` : '';
 
             div.innerHTML = `
-                <div class="card-header"><span class="card-title">${c.name}</span></div>
+                ${semTag}
+                <div class="card-header"><span class="card-title" style="padding-right:15px;">${c.name}</span></div>
                 <div style="font-size:10px;color:#666;margin-bottom:2px;">${c.teacher} • ${total}節 (已排${used})</div>
                 ${c.isIndependent ? '<div style="font-size:10px;color:red;font-weight:bold;">★ 獨立必修</div>' : ''}
                 <div class="btn-actions" ${c.isLocked ? 'style="display:none"' : ''}>
@@ -1221,14 +1310,12 @@
 
         let currentDay = -1; let currentDaySpan = 0; let dayTh = null;
         
-        // 修改：在渲染表頭時，加入分隔線類別
         dayCols.forEach((col, idx) => {
             if(col.d !== currentDay) {
                 currentDay = col.d; 
                 dayTh = document.createElement('th'); 
                 dayTh.textContent = `週${days[col.d-1]}`;
                 
-                // 加粗標題左側
                 dayTh.classList.add('day-border-left');
 
                 if(col.d >= 6) dayTh.style.color = '#e67e22';
@@ -1239,7 +1326,6 @@
             let thG = document.createElement('th'); 
             thG.textContent = `大${['一','二','三','四'][col.g-1]}`;
             
-            // 如果是該天的第一個年級，加粗左側
             if (currentDaySpan === 1) {
                 thG.classList.add('day-border-left');
             }
@@ -1257,14 +1343,12 @@
             tdTime.innerHTML = `<div style="line-height:1">${p.id}</div>`;
             tr.appendChild(tdTime);
             
-            // 記錄每一天的開始索引，以便加粗
             let currentDayForTd = -1;
 
             dayCols.forEach((col, colIdx) => {
                 let td = document.createElement('td');
                 let slotId = `${col.d}-${col.g}-${p.id}`;
                 
-                // 如果是新的一天，加入分隔線樣式
                 if (col.d !== currentDayForTd) {
                     td.classList.add('day-border-left');
                     currentDayForTd = col.d;
@@ -1438,10 +1522,26 @@
             for(let exId of existing) {
                 if(exId === cId && oldSlots.includes(tSlot)) continue; 
                 let exCourse = courses.find(c => c.id === exId); if(!exCourse) continue;
+                
+                // --- 衝突檢查邏輯更新 ---
+                // 1. 同一門課的拆分不可重疊 (永遠檢查)
                 if(course.parentId && exCourse.parentId === course.parentId) { Swal.fire('重疊錯誤', '同一門課的拆分時段不可重疊', 'error'); return; }
-                if(exCourse.teacher === course.teacher && exCourse.teacher !== "校必修") { Swal.fire('教師衝堂', `教師 ${course.teacher} 在此時段已有 ${exCourse.name}`, 'error'); return; }
+
+                // 2. 檢查學期是否衝突
+                // cSem=1(上), 2(下), 3(全)
+                // 衝突情況: (1vs1), (2vs2), (1vs3), (2vs3), (3vs3). 
+                // 不衝突: (1vs2).
+                let mySem = course.semester || 3;
+                let exSem = exCourse.semester || 3;
+                let isSemConflict = (mySem == 3 || exSem == 3 || mySem == exSem);
+
+                if (isSemConflict) {
+                     // 3. 教師衝堂
+                    if(exCourse.teacher === course.teacher && exCourse.teacher !== "校必修") { Swal.fire('教師衝堂', `教師 ${course.teacher} 在此時段已有 ${exCourse.name}`, 'error'); return; }
+                }
             }
 
+            // 4. 必修衝突檢查
             let conflictFound = false;
             let conflictName = "";
 
@@ -1452,6 +1552,11 @@
                 if (checkId === cId && oldSlots.includes(checkKey)) continue; 
                 let checkCourse = courses.find(c => c.id === checkId);
                 if (!checkCourse) continue;
+
+                // 學期是否重疊
+                let mySem = course.semester || 3;
+                let chkSem = checkCourse.semester || 3;
+                if (mySem != 3 && chkSem != 3 && mySem != chkSem) continue; // 1vs2 不衝突
 
                 if (course.isIndependent) {
                     conflictFound = true;
@@ -1521,25 +1626,25 @@
         let allowed = original.allowedGrades ? [...original.allowedGrades] : [];
         let cType = original.courseType || 'none';
         let isInd = original.isIndependent || false;
+        let cSem = original.semester || 3; // 繼承學期
 
         let partNameBase = original.name.replace(/\(必\)$/, '').replace(/\(選\)$/, '');
 
         if (original.periods === 3) {
             clearCourse(cId); let baseId = Date.now();
-            let partA = { ...original, id: (baseId).toString(), periods: 1, isSplit: true, parentId: cId, name: partNameBase + "(1)", allowedGrades: allowed, courseType: cType, isIndependent: isInd };
-            let partB = { ...original, id: (baseId+1).toString(), periods: 2, isSplit: true, parentId: cId, name: partNameBase + "(2)", allowedGrades: allowed, courseType: cType, isIndependent: isInd };
+            let partA = { ...original, id: (baseId).toString(), periods: 1, isSplit: true, parentId: cId, name: partNameBase + "(1)", allowedGrades: allowed, courseType: cType, isIndependent: isInd, semester: cSem };
+            let partB = { ...original, id: (baseId+1).toString(), periods: 2, isSplit: true, parentId: cId, name: partNameBase + "(2)", allowedGrades: allowed, courseType: cType, isIndependent: isInd, semester: cSem };
             courses = courses.filter(c => c.id !== cId); courses.push(partA, partB); save(); render();
         } else if (original.periods === 4) {
             clearCourse(cId); let baseId = Date.now();
-            let partA = { ...original, id: (baseId).toString(), periods: 2, isSplit: true, parentId: cId, name: partNameBase + "(1)", allowedGrades: allowed, courseType: cType, isIndependent: isInd };
-            let partB = { ...original, id: (baseId+1).toString(), periods: 2, isSplit: true, parentId: cId, name: partNameBase + "(2)", allowedGrades: allowed, courseType: cType, isIndependent: isInd };
+            let partA = { ...original, id: (baseId).toString(), periods: 2, isSplit: true, parentId: cId, name: partNameBase + "(1)", allowedGrades: allowed, courseType: cType, isIndependent: isInd, semester: cSem };
+            let partB = { ...original, id: (baseId+1).toString(), periods: 2, isSplit: true, parentId: cId, name: partNameBase + "(2)", allowedGrades: allowed, courseType: cType, isIndependent: isInd, semester: cSem };
             courses = courses.filter(c => c.id !== cId); courses.push(partA, partB); save(); render();
         } 
-        // 新增：2學分拆分功能 (1+1)
         else if (original.periods === 2) {
             clearCourse(cId); let baseId = Date.now();
-            let partA = { ...original, id: (baseId).toString(), periods: 1, isSplit: true, parentId: cId, name: partNameBase + "(1)", allowedGrades: allowed, courseType: cType, isIndependent: isInd };
-            let partB = { ...original, id: (baseId+1).toString(), periods: 1, isSplit: true, parentId: cId, name: partNameBase + "(2)", allowedGrades: allowed, courseType: cType, isIndependent: isInd };
+            let partA = { ...original, id: (baseId).toString(), periods: 1, isSplit: true, parentId: cId, name: partNameBase + "(1)", allowedGrades: allowed, courseType: cType, isIndependent: isInd, semester: cSem };
+            let partB = { ...original, id: (baseId+1).toString(), periods: 1, isSplit: true, parentId: cId, name: partNameBase + "(2)", allowedGrades: allowed, courseType: cType, isIndependent: isInd, semester: cSem };
             courses = courses.filter(c => c.id !== cId); courses.push(partA, partB); save(); render();
         }
         else {
@@ -1553,10 +1658,11 @@
         siblings.forEach(s => clearCourse(s.id)); let template = siblings[0];
         let totalPeriods = siblings.reduce((sum, s) => sum + s.periods, 0);
         let allowed = template.allowedGrades ? [...template.allowedGrades] : [];
+        let cSem = template.semester || 3;
         
         let cleanName = template.name.replace(/\(\d+\)$/, '').replace(/\(必\)$/, '').replace(/\(選\)$/, '');
 
-        let original = { id: parentId, name: cleanName, teacher: template.teacher, periods: totalPeriods, isSplit: false, allowedGrades: allowed, courseType: template.courseType, isIndependent: template.isIndependent };
+        let original = { id: parentId, name: cleanName, teacher: template.teacher, periods: totalPeriods, isSplit: false, allowedGrades: allowed, courseType: template.courseType, isIndependent: template.isIndependent, semester: cSem };
         courses = courses.filter(c => c.parentId !== parentId); courses.push(original); save(); render();
     }
 
@@ -1567,6 +1673,9 @@
         
         let mType = document.querySelector('input[name="mType"]:checked').value; 
         let mIndependent = (mType === 'required') ? document.getElementById('mIndependent').checked : false;
+        
+        // 讀取學期設定
+        let mSem = parseInt(document.querySelector('input[name="mSem"]:checked').value);
 
         let finalName = name;
         if (mType === 'required') finalName += " (必)";
@@ -1578,13 +1687,15 @@
                 name: finalName, teacher, periods: credits, isSplit: false, 
                 allowedGrades: checkedGrades,
                 courseType: mType,
-                isIndependent: mIndependent
+                isIndependent: mIndependent,
+                semester: mSem
             });
             if(!teacherColors[teacher]) teacherColors[teacher] = SOFT_COLORS[Object.keys(teacherColors).length % SOFT_COLORS.length];
             save(); render(); closeModal(); 
             document.getElementById('mName').value = ''; 
             document.querySelectorAll('#mGradeContainer input').forEach(cb => cb.checked = false);
             document.querySelector('input[name="mType"][value="none"]').checked = true;
+            document.querySelector('input[name="mSem"][value="3"]').checked = true; // reset to full year
             toggleMIndependent(false);
         } else { Swal.fire('欄位不完整', '請填寫所有欄位', 'warning'); }
     }
@@ -1619,6 +1730,11 @@
             document.getElementById('eIndependent').checked = !!course.isIndependent;
         }
 
+        // 設定學期
+        let cSem = course.semester || 3;
+        let semRadio = document.querySelector(`input[name="eSem"][value="${cSem}"]`);
+        if(semRadio) semRadio.checked = true;
+
         if(course.parentId) {
             creditInput.disabled = true;
             document.getElementById('eCreditsHelp').innerText = "已拆分課程不可修改節數，請先合併後再修改。";
@@ -1644,6 +1760,8 @@
         let eType = document.querySelector('input[name="eType"]:checked').value;
         let eIndependent = (eType === 'required') ? document.getElementById('eIndependent').checked : false;
 
+        let eSem = parseInt(document.querySelector('input[name="eSem"]:checked').value);
+
         let finalName = name;
         if (eType === 'required') finalName += " (必)";
         else if (eType === 'elective') finalName += " (選)";
@@ -1663,6 +1781,7 @@
                         c.allowedGrades = checkedGrades;
                         c.courseType = eType;
                         c.isIndependent = eIndependent;
+                        c.semester = eSem; // Update Sem
                     }
                 });
                 handleTeacherColorUpdate(originalCourse.teacher, teacher);
@@ -1676,7 +1795,8 @@
                     name: finalName, teacher: teacher, periods: credits, 
                     allowedGrades: checkedGrades,
                     courseType: eType,
-                    isIndependent: eIndependent
+                    isIndependent: eIndependent,
+                    semester: eSem // Update Sem
                 };
             }
             save(); render(); closeEditModal();
@@ -1711,7 +1831,16 @@
         localStorage.setItem('collapsedTeachers', JSON.stringify(collapsedTeachers));
     }
     function toggleSettings() { let p = document.getElementById('settingsPanel'); p.style.display = p.style.display === 'block' ? 'none' : 'block'; }
-    function updateSettings() { settings.sat = document.getElementById('showSat').checked; settings.sun = document.getElementById('showSun').checked; settings.wd = [1,2,3,4].map(i=>document.getElementById('g'+i).checked); save(); render(); }
+    function updateSettings() { 
+        settings.sat = document.getElementById('showSat').checked; 
+        settings.sun = document.getElementById('showSun').checked; 
+        settings.wd = [1,2,3,4].map(i=>document.getElementById('g'+i).checked); 
+        // 讀取學期設定
+        let semRadios = document.getElementsByName('semView');
+        for(let r of semRadios) { if(r.checked) settings.currentSemester = r.value; }
+
+        save(); render(); 
+    }
     
     function exportData() {
         let lines = [];
@@ -1728,6 +1857,7 @@
             let exportGrades = c.allowedGrades ? c.allowedGrades.join(';') : ""; 
             let exportType = c.courseType || "none";
             let exportInd = c.isIndependent ? "1" : "0";
+            let exportSem = c.semester || "3"; // Default 3
 
             if (c.parentId) {
                 let siblings = courses.filter(s => s.parentId === c.parentId).sort((a,b) => a.name.localeCompare(b.name));
@@ -1739,7 +1869,8 @@
                 exportTimeString = getAllScheduleKeys([c.id]);
             }
 
-            let line = `${exportName}|${exportTeacher}|${exportTimeString}|${exportGrades}|${exportType}|${exportInd}`;
+            // 增加第7欄位: Semester
+            let line = `${exportName}|${exportTeacher}|${exportTimeString}|${exportGrades}|${exportType}|${exportInd}|${exportSem}`;
             lines.push(line);
         });
 
@@ -1757,7 +1888,7 @@
         let output = lines.join("\n");
         let blob = new Blob([output], {type:'text/plain'});
         let a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `課程表_${new Date().toISOString().slice(0,10)}.txt`; a.click(); 
-        Swal.fire('導出成功', '已下載文字檔格式 (修復版)', 'success');
+        Swal.fire('導出成功', '已下載文字檔格式 (分學期版)', 'success');
     }
 
     function getAllScheduleKeys(courseIds) {
@@ -1853,6 +1984,10 @@
                         
                         let cType = (parts.length >= 5) ? parts[4] : "none";
                         let isInd = (parts.length >= 6) ? (parts[5] === "1") : false;
+                        
+                        // 第7欄位: Sem
+                        let cSem = (parts.length >= 7) ? parseInt(parts[6]) : 3;
+                        if(isNaN(cSem)) cSem = 3;
 
                         if (teacher === "校必修") {
                             let timeSegments = timeRaw.split(';').map(s => s.trim()).filter(s => s !== "");
@@ -1868,7 +2003,7 @@
                             let cId = Date.now() + Math.random().toString();
                             newCourses.push({ 
                                 id: cId, name, teacher, periods: totalPeriods, isSplit: false, 
-                                allowedGrades, courseType: cType, isIndependent: true, isDeptReq: true, isLocked: true
+                                allowedGrades, courseType: cType, isIndependent: true, isDeptReq: true, isLocked: true, semester: 3 // 校必修預設全學年
                             });
 
                             timeSegments.forEach(seg => {
@@ -1895,7 +2030,7 @@
                             newCourses.push({ 
                                 id: Date.now() + Math.random().toString(), 
                                 name, teacher, periods: 3, isSplit: false, 
-                                allowedGrades, courseType: cType, isIndependent: isInd
+                                allowedGrades, courseType: cType, isIndependent: isInd, semester: cSem
                             });
                             return;
                         }
@@ -1918,7 +2053,7 @@
                                         id: cId, parentId: parentId,
                                         name: name + `(${idx+1})`, teacher, 
                                         periods: pList.length, isSplit: true, 
-                                        allowedGrades, courseType: cType, isIndependent: isInd
+                                        allowedGrades, courseType: cType, isIndependent: isInd, semester: cSem
                                     });
                                     if (day && grade) {
                                         pList.forEach(p => {
@@ -1948,7 +2083,7 @@
                                 }
                                 newCourses.push({ 
                                     id: cId, name, teacher, periods: pList.length, isSplit: false, 
-                                    allowedGrades, courseType: cType, isIndependent: isInd
+                                    allowedGrades, courseType: cType, isIndependent: isInd, semester: cSem
                                 });
                             }
                         }
@@ -1986,8 +2121,16 @@
     // 初始化讀取網址資料
     window.addEventListener('load', checkUrlParams);
 
-    document.getElementById('showSat').checked = settings.sat; document.getElementById('showSun').checked = settings.sun;
+    // Initial UI Sync
+    document.getElementById('showSat').checked = settings.sat; 
+    document.getElementById('showSun').checked = settings.sun;
     [1,2,3,4].forEach(i => document.getElementById('g'+i).checked = settings.wd[i-1]);
+    
+    // Set Semester Radio
+    let curSem = settings.currentSemester || 1;
+    let semRadio = document.querySelector(`input[name="semView"][value="${curSem}"]`);
+    if(semRadio) semRadio.checked = true;
+
     document.getElementById('mCredits').addEventListener('keypress', function (e) { if (e.key === 'Enter') addCourse(); });
     window.addEventListener('resize', render); render();
 </script>
