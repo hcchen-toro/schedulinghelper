@@ -40,9 +40,7 @@
             align-items: center;
         }
 
-        /* ★ 修正重點：強制 SweetAlert2 (密碼視窗) 的層級高於歡迎視窗 (9999) 
-           這樣密碼框才會顯示在最上層
-        */
+        /* 強制 SweetAlert2 (密碼視窗) 的層級高於歡迎視窗 */
         .swal2-container {
             z-index: 10000 !important;
         }
@@ -652,7 +650,7 @@
         const { value: password } = await Swal.fire({
             title: '請輸入編輯密碼',
             input: 'password',
-            inputPlaceholder: '請輸入 THUEE33900',
+            inputPlaceholder: '請輸入密碼', // Fixed: Don't show password here
             showCancelButton: true,
             confirmButtonText: '驗證',
             cancelButtonText: '取消'
