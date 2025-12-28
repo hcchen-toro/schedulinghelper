@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>東海電機排課模擬器</title>
+    <title>東海電機排課模擬器 by HC</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.9.4/css/bulma.min.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     
@@ -267,7 +267,7 @@
             justify-content: center;
             align-items: center;
             text-align: center;
-            font-size: 14px; 
+            font-size: 16px; 
             font-weight: 700;
             line-height: 1.3;
             color: #222; 
@@ -353,9 +353,19 @@
             <div class="level-right"><button class="button is-primary is-small is-rounded" style="font-size: 0.75rem;" onclick="openModal()">+ 新增</button></div>
         </div>
 
-        <button class="button is-small is-fullwidth mb-2" style="font-size: 0.75rem;" onclick="toggleSettings()">⚙️ 顯示設定 (學期切換)</button>
+        <button class="button is-small is-fullwidth mb-2" style="font-size: 0.75rem;" onclick="toggleSettings()">⚙️ 設定 (學年/學期)</button>
         
         <div id="settingsPanel" class="settings-box">
+            <div class="field mb-3">
+                <label class="label is-small">📅 學年設定 (資料獨立)</label>
+                <div class="control">
+                    <div class="select is-small is-fullwidth">
+                        <select id="yearSelect" onchange="changeYear()">
+                            </select>
+                    </div>
+                </div>
+            </div>
+
             <div class="field mb-3">
                 <label class="label is-small">當前顯示學期</label>
                 <div class="control">
@@ -364,8 +374,13 @@
                 </div>
                 <p class="help">學年課(全)在任何學期都會顯示</p>
             </div>
+
+            <button class="button is-info is-light is-small is-fullwidth mb-3" onclick="openCopyModal()">
+                📥 複製他學期資料
+            </button>
+
             <hr class="my-2">
-            <p class="help mb-2">以下設定僅影響<b>週末 (週六、日)</b>。平日固定顯示全部分組。</p>
+            <p class="help mb-2">以下設定僅影響<b>週末 (週六、日)</b>。</p>
             <label class="checkbox mr-2"><input type="checkbox" id="showSat" onchange="updateSettings()"> 週六</label>
             <label class="checkbox"><input type="checkbox" id="showSun" onchange="updateSettings()"> 週日</label>
             <hr class="my-2">
@@ -388,7 +403,7 @@
     <div class="main-content">
         <div class="top-bar level is-mobile mb-2">
             <div class="level-left">
-                <h2 class="title is-6 mr-2" style="font-size: 1rem;">📅 東海電機排課模擬器  by HC <span id="currentSemLabel" class="tag is-info is-light is-rounded ml-2" style="font-weight:normal;"></span></h2>
+                <h2 class="title is-6 mr-2" style="font-size: 1rem;">📅 東海電機排課模擬器 by HC <span id="currentYearLabel" class="tag is-primary is-light is-rounded ml-1"></span> <span id="currentSemLabel" class="tag is-info is-light is-rounded ml-1" style="font-weight:normal;"></span></h2>
                 
                 <div id="firebaseUserDisplay">
                     <img id="userAvatar" class="user-avatar" src="" alt="">
@@ -636,23 +651,26 @@
     async function saveToCloud() {
         if (!currentUser) return;
         
+        // 僅儲存當前學年的資料
         const data = {
-            courses,
-            schedule,
-            teacherColors,
-            teacherTextColors,
-            teacherAvailability,
-            settings,
-            collapsedTeachers,
+            [`courses_${currentYear}`]: courses,
+            [`schedule_${currentYear}`]: schedule,
+            [`teacherColors_${currentYear}`]: teacherColors,
+            [`teacherTextColors_${currentYear}`]: teacherTextColors,
+            [`teacherAvailability_${currentYear}`]: teacherAvailability,
+            settings: settings, // Settings are global (mostly)
+            collapsedTeachers: collapsedTeachers,
             updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
             ownerName: currentUser.displayName,
-            ownerEmail: currentUser.email
+            ownerEmail: currentUser.email,
+            lastActiveYear: currentYear
         };
 
         try {
             Swal.showLoading();
-            await db.collection('timetables').doc(currentUser.uid).set(data);
-            Swal.fire('儲存成功', '您的課表已儲存至雲端。', 'success');
+            // 使用 merge: true 以保留雲端上其他學年的資料
+            await db.collection('timetables').doc(currentUser.uid).set(data, { merge: true });
+            Swal.fire('儲存成功', `您的 ${currentYear} 學年課表已儲存至雲端。`, 'success');
         } catch (e) {
             console.error(e);
             Swal.fire('儲存失敗', '請確認 Firebase Firestore Rules 已開啟寫入權限。', 'error');
@@ -666,7 +684,7 @@
 
     function shareCloudLink() {
         if (!currentUser) return;
-        const url = window.location.origin + window.location.pathname + "?uid=" + currentUser.uid;
+        const url = window.location.origin + window.location.pathname + "?uid=" + currentUser.uid + "&year=" + currentYear;
         navigator.clipboard.writeText(url).then(() => {
             Swal.fire({
                 title: '連結已複製！',
@@ -677,17 +695,28 @@
         });
     }
 
-    async function loadFromCloud(uid) {
+    async function loadFromCloud(uid, specificYear) {
         try {
             Swal.fire({ title: '正在載入雲端課表...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
             const doc = await db.collection('timetables').doc(uid).get();
             if (doc.exists) {
                 const data = doc.data();
-                if (data.courses) courses = data.courses;
-                if (data.schedule) schedule = data.schedule;
-                if (data.teacherColors) teacherColors = data.teacherColors;
-                if (data.teacherTextColors) teacherTextColors = data.teacherTextColors;
-                if (data.teacherAvailability) teacherAvailability = data.teacherAvailability;
+                
+                // Determine which year to load
+                let yearToLoad = specificYear || data.lastActiveYear || 114;
+                if(specificYear) yearToLoad = parseInt(specificYear);
+                
+                currentYear = yearToLoad;
+                document.getElementById('yearSelect').value = currentYear;
+                
+                let keySuffix = `_${currentYear}`;
+                
+                if (data[`courses${keySuffix}`]) courses = data[`courses${keySuffix}`];
+                if (data[`schedule${keySuffix}`]) schedule = data[`schedule${keySuffix}`];
+                if (data[`teacherColors${keySuffix}`]) teacherColors = data[`teacherColors${keySuffix}`];
+                if (data[`teacherTextColors${keySuffix}`]) teacherTextColors = data[`teacherTextColors${keySuffix}`];
+                if (data[`teacherAvailability${keySuffix}`]) teacherAvailability = data[`teacherAvailability${keySuffix}`];
+                
                 if (data.settings) settings = data.settings;
                 if (data.collapsedTeachers) collapsedTeachers = data.collapsedTeachers;
                 
@@ -695,7 +724,7 @@
                 render();
                 
                 let owner = data.ownerName || "未知使用者";
-                Swal.fire('載入成功', `已成功載入 ${owner} 的課表。`, 'success');
+                Swal.fire('載入成功', `已成功載入 ${owner} 的 ${currentYear} 學年課表。`, 'success');
             } else {
                 Swal.fire('找不到資料', '雲端尚無資料或權限不足。', 'warning');
             }
@@ -718,24 +747,198 @@
     const DEPT_REQ_DATA = [
         { name: "勞作", grade: 1, days: [1,2,3,4,5], periods: ['5'], sem: 3 },
         { name: "英文", grade: 1, days: [1,3], periods: ['3','4'], sem: 3 },
-        { name: "英文", grade: 2, days: [5], periods: ['1','2'], sem: 3 },//大二英文要改的話  sem 後面的3改2
+        { name: "英文", grade: 2, days: [5], periods: ['1','2'], sem: 2 }, // 週五1,2節英文改為下學期 (sem: 2)
         { name: "國文", grade: 1, days: [5], periods: ['8','9'], sem: 3 },
         { name: "體育", grade: 1, days: [3], periods: ['1','2'], sem: 3 },
         { name: "體育", grade: 2, days: [4], periods: ['5','6'], sem: 3 }
     ];
 
-    let courses = JSON.parse(localStorage.getItem('courses')) || [];
-    let schedule = JSON.parse(localStorage.getItem('schedule')) || {}; 
-    let teacherColors = JSON.parse(localStorage.getItem('teacherColors')) || {};
-    let teacherAvailability = JSON.parse(localStorage.getItem('teacherAvailability')) || {};
-    let teacherTextColors = JSON.parse(localStorage.getItem('teacherTextColors')) || {}; 
-    let collapsedTeachers = JSON.parse(localStorage.getItem('collapsedTeachers')) || [];
+    // 學年變數與初始化
+    let currentYear = parseInt(localStorage.getItem('lastActiveYear')) || 114;
     
-    // 更新 settings 預設值，加入 currentSemester (1=上, 2=下)
+    // 初始化下拉選單 114-120
+    const yearSelect = document.getElementById('yearSelect');
+    for(let y=114; y<=120; y++) {
+        let opt = document.createElement('option');
+        opt.value = y;
+        opt.innerText = `${y} 學年度`;
+        if(y === currentYear) opt.selected = true;
+        yearSelect.appendChild(opt);
+    }
+
+    // 資料載入邏輯: 根據 currentYear 決定 key
+    function getStorageKey(baseKey) {
+        return `${baseKey}_${currentYear}`;
+    }
+
+    let courses = [];
+    let schedule = {}; 
+    let teacherColors = {};
+    let teacherAvailability = {};
+    let teacherTextColors = {}; 
+    
+    // settings 和 collapsedTeachers 暫時共用或跟隨最後設定
     let settings = JSON.parse(localStorage.getItem('settings')) || {
         sat: true, sun: false, wd: [true,true,true,true], we: [true,true,true,true], currentSemester: 1
     };
-    if (!settings.currentSemester) settings.currentSemester = 1; // Migration
+    if (!settings.currentSemester) settings.currentSemester = 1;
+    let collapsedTeachers = JSON.parse(localStorage.getItem('collapsedTeachers')) || [];
+
+    function loadDataForYear() {
+        courses = JSON.parse(localStorage.getItem(getStorageKey('courses'))) || [];
+        schedule = JSON.parse(localStorage.getItem(getStorageKey('schedule'))) || {};
+        teacherColors = JSON.parse(localStorage.getItem(getStorageKey('teacherColors'))) || {};
+        teacherAvailability = JSON.parse(localStorage.getItem(getStorageKey('teacherAvailability'))) || {};
+        teacherTextColors = JSON.parse(localStorage.getItem(getStorageKey('teacherTextColors'))) || {};
+        
+        // 視覺過濾設定重置
+        if (!settings.currentSemester) settings.currentSemester = 1;
+        
+        render();
+    }
+
+    // 初始載入
+    loadDataForYear();
+
+    function changeYear() {
+        // 先存檔當前學年
+        save();
+        
+        // 切換
+        currentYear = parseInt(document.getElementById('yearSelect').value);
+        localStorage.setItem('lastActiveYear', currentYear);
+        
+        // 讀取新學年
+        loadDataForYear();
+        
+        Swal.fire({
+            title: `已切換至 ${currentYear} 學年度`,
+            icon: 'info',
+            timer: 1000,
+            showConfirmButton: false
+        });
+    }
+
+    // --- 複製功能 ---
+    function openCopyModal() {
+        let yearOptions = '';
+        for(let y=114; y<=120; y++) {
+            if(y !== currentYear) {
+                yearOptions += `<option value="${y}">${y} 學年度</option>`;
+            }
+        }
+        
+        if (yearOptions === '') yearOptions = '<option disabled>無其他學年可選</option>';
+
+        Swal.fire({
+            title: '複製他學期資料',
+            html: `
+                <div class="field">
+                    <label class="label">來源學年</label>
+                    <div class="control">
+                        <div class="select is-fullwidth">
+                            <select id="copyFromYear">${yearOptions}</select>
+                        </div>
+                    </div>
+                </div>
+                <div class="field">
+                    <label class="label">來源學期</label>
+                    <div class="control">
+                        <div class="select is-fullwidth">
+                            <select id="copyFromSem">
+                                <option value="1">上學期 (第1學期)</option>
+                                <option value="2">下學期 (第2學期)</option>
+                                <option value="3">整學年 (全)</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                <p class="help is-info">注意：複製過來的課程將加入左側列表，不會覆蓋現有排程。</p>
+            `,
+            showCancelButton: true,
+            confirmButtonText: '開始複製',
+            cancelButtonText: '取消',
+            preConfirm: () => {
+                const srcYear = document.getElementById('copyFromYear').value;
+                const srcSem = document.getElementById('copyFromSem').value;
+                return { srcYear, srcSem };
+            }
+        }).then((result) => {
+            if (result.isConfirmed) {
+                performCopy(result.value.srcYear, result.value.srcSem);
+            }
+        });
+    }
+
+    function performCopy(srcYear, srcSem) {
+        let srcCourses = JSON.parse(localStorage.getItem(`courses_${srcYear}`)) || [];
+        
+        if (srcCourses.length === 0) {
+            Swal.fire('查無資料', `${srcYear} 學年度沒有資料可複製。`, 'warning');
+            return;
+        }
+
+        let count = 0;
+        let targetSem = parseInt(settings.currentSemester); // 複製進來後，變成當前檢視的學期
+        srcSem = parseInt(srcSem);
+
+        srcCourses.forEach(c => {
+            let cSem = c.semester || 3;
+            // 篩選邏輯: 
+            // 如果選來源 "上學期"，則複製 "上學期" 和 "學年課"
+            // 如果選來源 "下學期"，則複製 "下學期" 和 "學年課"
+            // 如果選來源 "整學年"，則只複製 "學年課"
+            let shouldCopy = false;
+            
+            if (srcSem === 3) {
+                if (cSem === 3) shouldCopy = true;
+            } else {
+                if (cSem === srcSem || cSem === 3) shouldCopy = true;
+            }
+
+            if (shouldCopy) {
+                // 複製物件
+                let newCourse = JSON.parse(JSON.stringify(c));
+                
+                // 重置 ID 與 父ID 避免衝突
+                newCourse.id = Date.now() + Math.random().toString();
+                if (newCourse.parentId) newCourse.parentId = null; // 拆分課變回獨立課會比較安全，或是全部重設
+                newCourse.isSplit = false; // 重置拆分狀態，避免 schedule 對不上
+                
+                // 設定學期: 
+                // 若原本是學年課(3)，保持 3
+                // 若原本是半學期(1或2)，為了方便，設為「當下正在檢視的學期」
+                if (cSem !== 3) {
+                    newCourse.semester = targetSem;
+                }
+
+                // 清除鎖定狀態 (如果是校必修，解除鎖定，讓使用者決定)
+                if (newCourse.isDeptReq) {
+                    // 校必修通常透過按鈕生成，複製過來建議轉為普通課程或保持
+                    // 這裡保持原本屬性，但可能會有重複 ID 問題 (dept_req_...)
+                    newCourse.id = `copied_${srcYear}_${Date.now()}_${Math.random()}`;
+                }
+
+                courses.push(newCourse);
+                
+                // 同步顏色
+                if (!teacherColors[newCourse.teacher]) {
+                    // 嘗試從來源複製顏色
+                    let srcColors = JSON.parse(localStorage.getItem(`teacherColors_${srcYear}`)) || {};
+                    if (srcColors[newCourse.teacher]) {
+                        teacherColors[newCourse.teacher] = srcColors[newCourse.teacher];
+                    } else {
+                        teacherColors[newCourse.teacher] = SOFT_COLORS[Object.keys(teacherColors).length % SOFT_COLORS.length];
+                    }
+                }
+                count++;
+            }
+        });
+
+        save();
+        render();
+        Swal.fire('複製完成', `已成功從 ${srcYear} 學年度複製 ${count} 門課程至列表。`, 'success');
+    }
 
     function exportImage(type) {
         const element = document.getElementById('captureTarget');
@@ -783,7 +986,7 @@
                 render(); 
 
                 let semLabel = settings.currentSemester == 1 ? "上學期" : "下學期";
-                let filename = `我的課表_${semLabel}_${new Date().toISOString().slice(0,10)}`;
+                let filename = `我的課表_${currentYear}學年_${semLabel}_${new Date().toISOString().slice(0,10)}`;
 
                 if (type === 'png') {
                     const link = document.createElement('a');
@@ -829,9 +1032,10 @@
         const urlParams = new URLSearchParams(window.location.search);
         const uid = urlParams.get('uid');
         const compressed = urlParams.get('data');
+        const loadYear = urlParams.get('year');
 
         if (uid) {
-            loadFromCloud(uid);
+            loadFromCloud(uid, loadYear);
             window.history.replaceState({}, document.title, window.location.pathname);
         } else if (compressed) {
             loadFromLZString(compressed);
@@ -839,6 +1043,7 @@
     }
 
     function shareToUrl() {
+        // 僅分享當前學年
         let data = {
             courses: courses,
             schedule: schedule,
@@ -846,7 +1051,8 @@
             teacherTextColors: teacherTextColors,
             teacherAvailability: teacherAvailability,
             settings: settings,
-            collapsedTeachers: collapsedTeachers
+            collapsedTeachers: collapsedTeachers,
+            year: currentYear
         };
         
         try {
@@ -857,7 +1063,7 @@
             navigator.clipboard.writeText(url).then(() => {
                 Swal.fire({
                     title: '網址連結已複製！',
-                    text: '此網址包含當前所有資料，可直接傳送或備份。',
+                    text: `此連結包含 ${currentYear} 學年度資料。`,
                     icon: 'success',
                     footer: '<a href="' + url + '" target="_blank">點此直接開啟</a>'
                 });
@@ -872,6 +1078,12 @@
             let jsonString = LZString.decompressFromEncodedURIComponent(compressed);
             let data = JSON.parse(jsonString);
             
+            if (data.year) {
+                currentYear = parseInt(data.year);
+                document.getElementById('yearSelect').value = currentYear;
+                localStorage.setItem('lastActiveYear', currentYear);
+            }
+
             if (data.courses) courses = data.courses;
             if (data.schedule) schedule = data.schedule;
             if (data.teacherColors) teacherColors = data.teacherColors;
@@ -881,9 +1093,10 @@
             if (data.collapsedTeachers) collapsedTeachers = data.collapsedTeachers;
             
             save();
+            render();
             Swal.fire({
                 title: '資料還原成功',
-                text: '已成功從網址還原您的課表。',
+                text: `已還原 ${currentYear} 學年度資料。`,
                 icon: 'success',
                 timer: 1500,
                 showConfirmButton: false
@@ -919,8 +1132,8 @@
             let conflictCount = 0;
             DEPT_REQ_DATA.forEach((req, idx) => {
                 let reqId = `dept_req_${idx}_${Date.now()}`;
-                // 校必修預設全部為學年課 (sem=3)
-                let reqSem = 3; 
+                // 讀取設定檔中的 sem，若無則預設為 3 (學年課)
+                let reqSem = req.sem || 3; 
                 
                 req.days.forEach(d => {
                     req.periods.forEach(p => {
@@ -948,7 +1161,7 @@
                 });
             });
             courses = [...courses, ...newCourses];
-            let msg = '電機系校必修已載入(預設為學年課)';
+            let msg = '電機系校必修已載入';
             if(conflictCount > 0) msg += `，並移除了 ${conflictCount} 個衝突時段的課程回到列表`;
             Swal.fire('已載入', msg, 'success');
         }
@@ -1037,6 +1250,10 @@
         
         // 更新標題顯示目前學期
         const semLabel = document.getElementById('currentSemLabel');
+        const yearLabel = document.getElementById('currentYearLabel');
+        
+        yearLabel.innerText = `${currentYear}學年`;
+        
         if (settings.currentSemester == 1) semLabel.innerText = "上學期";
         else if (settings.currentSemester == 2) semLabel.innerText = "下學期";
         else semLabel.innerText = "";
@@ -1528,9 +1745,6 @@
                 if(course.parentId && exCourse.parentId === course.parentId) { Swal.fire('重疊錯誤', '同一門課的拆分時段不可重疊', 'error'); return; }
 
                 // 2. 檢查學期是否衝突
-                // cSem=1(上), 2(下), 3(全)
-                // 衝突情況: (1vs1), (2vs2), (1vs3), (2vs3), (3vs3). 
-                // 不衝突: (1vs2).
                 let mySem = course.semester || 3;
                 let exSem = exCourse.semester || 3;
                 let isSemConflict = (mySem == 3 || exSem == 3 || mySem == exSem);
@@ -1822,11 +2036,13 @@
     function openModal() { document.getElementById('courseModal').classList.add('is-active'); }
     function closeModal() { document.getElementById('courseModal').classList.remove('is-active'); }
     function save() { 
-        localStorage.setItem('courses', JSON.stringify(courses)); 
-        localStorage.setItem('schedule', JSON.stringify(schedule)); 
-        localStorage.setItem('teacherColors', JSON.stringify(teacherColors)); 
-        localStorage.setItem('teacherTextColors', JSON.stringify(teacherTextColors)); 
-        localStorage.setItem('teacherAvailability', JSON.stringify(teacherAvailability)); 
+        // 使用 dynamic key 儲存
+        localStorage.setItem(getStorageKey('courses'), JSON.stringify(courses)); 
+        localStorage.setItem(getStorageKey('schedule'), JSON.stringify(schedule)); 
+        localStorage.setItem(getStorageKey('teacherColors'), JSON.stringify(teacherColors)); 
+        localStorage.setItem(getStorageKey('teacherTextColors'), JSON.stringify(teacherTextColors)); 
+        localStorage.setItem(getStorageKey('teacherAvailability'), JSON.stringify(teacherAvailability)); 
+        
         localStorage.setItem('settings', JSON.stringify(settings)); 
         localStorage.setItem('collapsedTeachers', JSON.stringify(collapsedTeachers));
     }
@@ -1887,8 +2103,8 @@
         
         let output = lines.join("\n");
         let blob = new Blob([output], {type:'text/plain'});
-        let a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `課程表_${new Date().toISOString().slice(0,10)}.txt`; a.click(); 
-        Swal.fire('導出成功', '已下載文字檔格式 (分學期版)', 'success');
+        let a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `課程表_${currentYear}學年_${new Date().toISOString().slice(0,10)}.txt`; a.click(); 
+        Swal.fire('導出成功', `已下載 ${currentYear} 學年度文字檔格式`, 'success');
     }
 
     function getAllScheduleKeys(courseIds) {
@@ -2136,5 +2352,3 @@
 </script>
 </body>
 </html>
-
-
