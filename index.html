@@ -40,6 +40,13 @@
             align-items: center;
         }
 
+        /* ★ 修正重點：強制 SweetAlert2 (密碼視窗) 的層級高於歡迎視窗 (9999) 
+           這樣密碼框才會顯示在最上層
+        */
+        .swal2-container {
+            z-index: 10000 !important;
+        }
+
         /* Read Only Mode Styles */
         body.read-only-mode .edit-only {
             display: none !important;
@@ -641,6 +648,7 @@
     }
 
     async function selectEditMode() {
+        // Swal fires here. z-index corrected in CSS
         const { value: password } = await Swal.fire({
             title: '請輸入編輯密碼',
             input: 'password',
@@ -658,6 +666,8 @@
         } else if (password !== undefined) {
             Swal.fire('密碼錯誤', '無法進入編輯模式', 'error');
         }
+        // If user clicks Cancel (password === undefined), the loop ends, 
+        // Swal closes, and they are back at the Mode Selection screen.
     }
 
     function closeModeModal() {
