@@ -143,6 +143,7 @@
         .card-title { font-weight: 700; font-size: 13px; color: #2c3e50; }
         .tag-split { background: #ffeaa7; color: #d35400; font-size: 10px; padding: 1px 4px; border-radius: 3px; font-weight: bold; }
         
+        /* 學期標籤樣式 */
         .sem-tag {
             position: absolute;
             top: 2px;
@@ -153,9 +154,9 @@
             color: white;
             font-weight: bold;
         }
-        .sem-1 { background-color: #3498db; } 
-        .sem-2 { background-color: #e67e22; } 
-        .sem-3 { background-color: #9b59b6; } 
+        .sem-1 { background-color: #3498db; } /* 上 */
+        .sem-2 { background-color: #e67e22; } /* 下 */
+        .sem-3 { background-color: #9b59b6; } /* 全 */
 
         .btn-actions { display: flex; gap: 4px; margin-top: 4px; }
         .btn-actions button { flex: 1; border: none; padding: 2px; border-radius: 3px; font-size: 10px; cursor: pointer; color: white; transition: opacity 0.2s; }
@@ -285,10 +286,9 @@
             justify-content: center;
             align-items: center;
             text-align: center;
-            /* 移除固定字體大小 */
-            /* font-size: 16px; */
+            /* 移除固定字體大小，改用 JS 動態計算 */
             font-weight: 700;
-            line-height: 1.1; /* 縮小行距以適應更多文字 */
+            line-height: 1.1; /* 縮小行距以容納更多內容 */
             color: #222; 
             overflow: hidden;
             cursor: grab; 
@@ -412,7 +412,7 @@
                 <div class="control">
                     <div class="select is-small is-fullwidth">
                         <select id="yearSelect" onchange="changeYear()">
-                        </select>
+                            </select>
                     </div>
                 </div>
             </div>
@@ -656,12 +656,11 @@
         } else {
             document.body.classList.remove('read-only-mode');
         }
-        
         updateAuthUI(currentUser);
         render(); 
     }
 
-    // --- Firebase Initialization ---
+    // --- Firebase Initialization (Restored) ---
     const firebaseConfig = {
         apiKey: "AIzaSyAlx1ZWWjvgxMi9vsw-XzYd9mTS6ilI3lY",
         authDomain: "thuee-c83e7.firebaseapp.com",
@@ -698,7 +697,7 @@
             btnLogin.style.display = 'none';
             btnLogout.style.display = 'inline-flex';
             
-            // 編輯模式下才顯示儲存
+            // Only show Save if in Edit Mode
             if (!isReadOnly) {
                 btnCloudSave.style.display = 'inline-flex';
             } else {
@@ -745,7 +744,6 @@
         if (!currentUser) return;
         if (isReadOnly) return; 
         
-        // 儲存邏輯包含所有學年資料與設定
         const data = {
             [`courses_${currentYear}`]: courses,
             [`schedule_${currentYear}`]: schedule,
@@ -1336,13 +1334,27 @@
         const blocks = document.querySelectorAll('.course-block');
         blocks.forEach(block => {
             const width = block.getBoundingClientRect().width;
+            const height = block.getBoundingClientRect().height;
+            const textLength = block.innerText.length;
+
+            // 基礎大小：寬度的 1/3.2 (讓字體更大)
+            let calcSize = width / 3.2;
             
-            // 基礎字體大小算法：寬度的 1/4.5，限制在 9px 到 15px 之間
-            let newSize = Math.floor(width / 4.5); 
-            if (newSize > 15) newSize = 15;
-            if (newSize < 9) newSize = 9;
+            // 如果課程名稱很短 (<= 4字)，即使格子窄，也可以稍微大一點，因為不用換行太多次
+            if (textLength <= 4) {
+                calcSize = width / 2.2;
+            }
+
+            // 限制範圍：最小 11px (閱讀底線)，最大 16px (使用者要求)
+            // 若格子實在太窄 (<33px)，容許縮小到 9px
+            let finalSize = Math.floor(calcSize);
             
-            block.style.fontSize = `${newSize}px`;
+            if (finalSize > 16) finalSize = 16;
+            if (finalSize < 11) {
+                finalSize = (width < 30) ? 9 : 11;
+            }
+            
+            block.style.fontSize = `${finalSize}px`;
         });
     }
 
@@ -2443,6 +2455,7 @@
             }
         });
 
+        // 更新至全域變數並儲存至當前學年 Key
         courses = newCourses;
         schedule = newSchedule;
         teacherColors = newTeacherColors;
@@ -2456,8 +2469,9 @@
     // Initialize UI state
     window.addEventListener('load', () => {
         checkUrlParams();
-        updateUIForMode(); 
+        updateUIForMode(); // Initially read only
         
+        // Populate settings inputs based on loaded data
         document.getElementById('showSat').checked = settings.sat; 
         document.getElementById('showSun').checked = settings.sun;
         [1,2,3,4].forEach(i => document.getElementById('g'+i).checked = settings.wd[i-1]);
