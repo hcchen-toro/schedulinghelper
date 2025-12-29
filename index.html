@@ -40,12 +40,13 @@
             align-items: center;
         }
 
-        /* 強制 SweetAlert2 (密碼視窗) 的層級高於歡迎視窗 */
+        /* SweetAlert2 層級修正 */
         .swal2-container {
             z-index: 10000 !important;
         }
 
         /* Read Only Mode Styles */
+        /* 當 body 有 read-only-mode class 時，隱藏所有 edit-only 元素 */
         body.read-only-mode .edit-only {
             display: none !important;
         }
@@ -717,8 +718,9 @@
         if (user) {
             btnLogin.style.display = 'none';
             btnLogout.style.display = 'inline-flex';
-            // Save is handled by CSS edit-only class now, but logically sync here
-            if(!isReadOnly) btnCloudSave.style.display = 'inline-flex';
+            // Save logic fixed: Only logic check is auth. CSS handles ReadOnly.
+            btnCloudSave.style.display = 'inline-flex';
+            
             btnCloudLoad.style.display = 'inline-flex'; 
             btnCloudShare.style.display = 'inline-flex';
             userDisplay.style.display = 'flex';
