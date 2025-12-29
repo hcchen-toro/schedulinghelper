@@ -143,7 +143,6 @@
         .card-title { font-weight: 700; font-size: 13px; color: #2c3e50; }
         .tag-split { background: #ffeaa7; color: #d35400; font-size: 10px; padding: 1px 4px; border-radius: 3px; font-weight: bold; }
         
-        /* 學期標籤樣式 */
         .sem-tag {
             position: absolute;
             top: 2px;
@@ -154,9 +153,9 @@
             color: white;
             font-weight: bold;
         }
-        .sem-1 { background-color: #3498db; } /* 上 */
-        .sem-2 { background-color: #e67e22; } /* 下 */
-        .sem-3 { background-color: #9b59b6; } /* 全 */
+        .sem-1 { background-color: #3498db; } 
+        .sem-2 { background-color: #e67e22; } 
+        .sem-3 { background-color: #9b59b6; } 
 
         .btn-actions { display: flex; gap: 4px; margin-top: 4px; }
         .btn-actions button { flex: 1; border: none; padding: 2px; border-radius: 3px; font-size: 10px; cursor: pointer; color: white; transition: opacity 0.2s; }
@@ -286,9 +285,10 @@
             justify-content: center;
             align-items: center;
             text-align: center;
-            font-size: 16px; 
+            /* 移除固定字體大小 */
+            /* font-size: 16px; */
             font-weight: 700;
-            line-height: 1.3;
+            line-height: 1.1; /* 縮小行距以適應更多文字 */
             color: #222; 
             overflow: hidden;
             cursor: grab; 
@@ -301,7 +301,7 @@
         }
         
         .course-block:hover { z-index: 100 !important; transform: scale(1.05); box-shadow: 0 4px 10px rgba(0,0,0,0.25); }
-        .course-info { font-size: 0.8em; opacity: 0.9; font-weight: normal; margin-top: 0px; display: block; }
+        .course-info { font-size: 0.9em; opacity: 0.9; font-weight: normal; margin-top: 0px; display: block; }
         
         body.is-dragging .course-block { pointer-events: none; opacity: 0.6; }
         body.is-dragging .timetable td { cursor: copy; }
@@ -338,29 +338,10 @@
         .auth-buttons { display: flex; gap: 5px; }
         #firebaseUserDisplay { display: none; align-items: center; background: #f0f0f0; padding: 2px 8px; border-radius: 12px; }
 
-        /* Mode Selection Modal Custom Styles */
-        .mode-selection-content {
-            text-align: center;
-        }
-        .mode-card {
-            padding: 2rem;
-            border-radius: 12px;
-            background: white;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
-            transition: transform 0.2s;
-            cursor: pointer;
-            border: 2px solid transparent;
-            height: 100%;
-        }
-        .mode-card:hover {
-            transform: translateY(-5px);
-            border-color: #3298dc;
-        }
-        .mode-icon {
-            font-size: 3rem;
-            margin-bottom: 1rem;
-            color: #3298dc;
-        }
+        .mode-selection-content { text-align: center; }
+        .mode-card { padding: 2rem; border-radius: 12px; background: white; box-shadow: 0 4px 15px rgba(0,0,0,0.1); transition: transform 0.2s; cursor: pointer; border: 2px solid transparent; height: 100%; }
+        .mode-card:hover { transform: translateY(-5px); border-color: #3298dc; }
+        .mode-icon { font-size: 3rem; margin-bottom: 1rem; color: #3298dc; }
         
     </style>
 </head>
@@ -431,7 +412,7 @@
                 <div class="control">
                     <div class="select is-small is-fullwidth">
                         <select id="yearSelect" onchange="changeYear()">
-                            </select>
+                        </select>
                     </div>
                 </div>
             </div>
@@ -483,7 +464,7 @@
             
             <div class="level-right">
                 <div class="buttons are-small">
-                    <button id="btnLogin" class="button is-info is-outlined" style="font-size: 0.75rem;" onclick="handleLogin()">
+                    <button id="btnLogin" class="button is-info is-outlined edit-only" style="font-size: 0.75rem;" onclick="handleLogin()">
                         <span class="icon"><i class="fab fa-google"></i></span>
                         <span>登入</span>
                     </button>
@@ -676,7 +657,6 @@
             document.body.classList.remove('read-only-mode');
         }
         
-        // Re-check auth UI visibility based on mode
         updateAuthUI(currentUser);
         render(); 
     }
@@ -718,7 +698,7 @@
             btnLogin.style.display = 'none';
             btnLogout.style.display = 'inline-flex';
             
-            // Only show Save if in Edit Mode
+            // 編輯模式下才顯示儲存
             if (!isReadOnly) {
                 btnCloudSave.style.display = 'inline-flex';
             } else {
@@ -765,6 +745,7 @@
         if (!currentUser) return;
         if (isReadOnly) return; 
         
+        // 儲存邏輯包含所有學年資料與設定
         const data = {
             [`courses_${currentYear}`]: courses,
             [`schedule_${currentYear}`]: schedule,
@@ -831,7 +812,7 @@
                 if (data.settings) settings = data.settings;
                 if (data.collapsedTeachers) collapsedTeachers = data.collapsedTeachers;
                 
-                if(!isReadOnly) save(); // Only save locally if in edit mode
+                if(!isReadOnly) save(); 
                 render();
                 
                 let owner = data.ownerName || "未知使用者";
@@ -903,11 +884,9 @@
         render();
     }
 
-    // Initial load happens, but render is called after mode selection implicitly via updateUIForMode or manual triggers
     loadDataForYear();
 
     function changeYear() {
-        // Only save if in edit mode
         if(!isReadOnly) save();
         
         currentYear = parseInt(document.getElementById('yearSelect').value);
@@ -1348,6 +1327,23 @@
         renderSidebar(); 
         renderTimetable(); 
         renderLegend(); 
+        
+        // After render, adjust fonts
+        adjustCourseFonts();
+    }
+    
+    function adjustCourseFonts() {
+        const blocks = document.querySelectorAll('.course-block');
+        blocks.forEach(block => {
+            const width = block.getBoundingClientRect().width;
+            
+            // 基礎字體大小算法：寬度的 1/4.5，限制在 9px 到 15px 之間
+            let newSize = Math.floor(width / 4.5); 
+            if (newSize > 15) newSize = 15;
+            if (newSize < 9) newSize = 9;
+            
+            block.style.fontSize = `${newSize}px`;
+        });
     }
 
     function renderSidebar() {
@@ -1424,7 +1420,7 @@
     function getSemTag(sem) {
         if (sem == 1) return `<span class="sem-tag sem-1">上</span>`;
         if (sem == 2) return `<span class="sem-tag sem-2">下</span>`;
-        return `<span class="sem-tag sem-3">全</span>`; // Default
+        return `<span class="sem-tag sem-3">全</span>`; 
     }
 
     function createCourseCard(c, processedParents) {
