@@ -40,13 +40,12 @@
             align-items: center;
         }
 
-        /* SweetAlert2 層級修正 */
+        /* SweetAlert2 Z-Index Fix */
         .swal2-container {
             z-index: 10000 !important;
         }
 
         /* Read Only Mode Styles */
-        /* 當 body 有 read-only-mode class 時，隱藏所有 edit-only 元素 */
         body.read-only-mode .edit-only {
             display: none !important;
         }
@@ -379,7 +378,7 @@
                     <div class="mode-card" onclick="selectReadOnlyMode()">
                         <div class="mode-icon"><i class="fas fa-eye"></i></div>
                         <h3 class="title is-5">唯讀模式</h3>
-                        <p class="is-size-7 has-text-grey">僅供檢視，無法編輯、儲存或變動課表。<br>適合純瀏覽使用。</p>
+                        <p class="is-size-7 has-text-grey">僅供檢視，無法編輯。<br>可登入以讀取雲端存檔。</p>
                     </div>
                 </div>
                 <div class="column">
@@ -484,7 +483,7 @@
             
             <div class="level-right">
                 <div class="buttons are-small">
-                    <button id="btnLogin" class="button is-info is-outlined edit-only" style="font-size: 0.75rem;" onclick="handleLogin()">
+                    <button id="btnLogin" class="button is-info is-outlined" style="font-size: 0.75rem;" onclick="handleLogin()">
                         <span class="icon"><i class="fab fa-google"></i></span>
                         <span>登入</span>
                     </button>
@@ -520,9 +519,9 @@
                     </div>
 
                     <button class="button is-primary is-light" style="font-size: 0.75rem;" onclick="shareToUrl()">🔗 網址備份</button>
-                    <button class="button is-success is-light" style="font-size: 0.75rem;" onclick="exportData()">📥 導出</button>
+                    <button class="button is-success is-light" style="font-size: 0.75rem;" onclick="exportAllData()">📥 全備份導出</button>
                     <button class="button is-link is-light edit-only" style="font-size: 0.75rem;" onclick="document.getElementById('importFile').click()">📤 導入</button>
-                    <input type="file" id="importFile" style="display: none;" accept=".txt" onchange="importData(this)">
+                    <input type="file" id="importFile" style="display: none;" accept=".txt,.json" onchange="importData(this)">
                 </div>
             </div>
         </div>
@@ -637,7 +636,7 @@
 
 <script>
     // --- Mode Selection Logic ---
-    let isReadOnly = true; // Default safety
+    let isReadOnly = true; 
 
     function selectReadOnlyMode() {
         isReadOnly = true;
@@ -647,11 +646,10 @@
     }
 
     async function selectEditMode() {
-        // Swal fires here. z-index corrected in CSS
         const { value: password } = await Swal.fire({
             title: '請輸入編輯密碼',
             input: 'password',
-            inputPlaceholder: '請輸入密碼', // Fixed: Don't show password here
+            inputPlaceholder: '請輸入密碼', 
             showCancelButton: true,
             confirmButtonText: '驗證',
             cancelButtonText: '取消'
@@ -665,8 +663,6 @@
         } else if (password !== undefined) {
             Swal.fire('密碼錯誤', '無法進入編輯模式', 'error');
         }
-        // If user clicks Cancel (password === undefined), the loop ends, 
-        // Swal closes, and they are back at the Mode Selection screen.
     }
 
     function closeModeModal() {
@@ -679,7 +675,10 @@
         } else {
             document.body.classList.remove('read-only-mode');
         }
-        render(); // Re-render to update drag/drop states
+        
+        // Re-check auth UI visibility based on mode
+        updateAuthUI(currentUser);
+        render(); 
     }
 
     // --- Firebase Initialization ---
@@ -718,8 +717,13 @@
         if (user) {
             btnLogin.style.display = 'none';
             btnLogout.style.display = 'inline-flex';
-            // Save logic fixed: Only logic check is auth. CSS handles ReadOnly.
-            btnCloudSave.style.display = 'inline-flex';
+            
+            // Only show Save if in Edit Mode
+            if (!isReadOnly) {
+                btnCloudSave.style.display = 'inline-flex';
+            } else {
+                btnCloudSave.style.display = 'none';
+            }
             
             btnCloudLoad.style.display = 'inline-flex'; 
             btnCloudShare.style.display = 'inline-flex';
@@ -759,7 +763,7 @@
 
     async function saveToCloud() {
         if (!currentUser) return;
-        if (isReadOnly) return; // Guard
+        if (isReadOnly) return; 
         
         const data = {
             [`courses_${currentYear}`]: courses,
@@ -827,7 +831,7 @@
                 if (data.settings) settings = data.settings;
                 if (data.collapsedTeachers) collapsedTeachers = data.collapsedTeachers;
                 
-                if(!isReadOnly) save(); // Only save to local if edit mode, or just load to memory
+                if(!isReadOnly) save(); // Only save locally if in edit mode
                 render();
                 
                 let owner = data.ownerName || "未知使用者";
@@ -1153,7 +1157,7 @@
                 });
             });
         } catch (e) {
-            Swal.fire('錯誤', '資料過大無法生成網址，請使用「☁️ 雲端儲存」功能。', 'error');
+            Swal.fire('錯誤', '資料過大無法生成網址，請使用全備份導出功能。', 'error');
         }
     }
 
@@ -2151,52 +2155,37 @@
         render(); 
     }
     
-    function exportData() {
-        let lines = [];
-        lines.push("{");
-
-        let processedIds = new Set();
+    // 全學年備份導出
+    function exportAllData() {
+        let exportObj = {};
         
-        courses.forEach(c => {
-            if (processedIds.has(c.id)) return;
+        // 1. 全域設定
+        exportObj['settings'] = JSON.parse(localStorage.getItem('settings'));
+        exportObj['collapsedTeachers'] = JSON.parse(localStorage.getItem('collapsedTeachers'));
+        exportObj['lastActiveYear'] = localStorage.getItem('lastActiveYear');
 
-            let exportName = c.name; 
-            let exportTeacher = c.teacher;
-            let exportTimeString = "";
-            let exportGrades = c.allowedGrades ? c.allowedGrades.join(';') : ""; 
-            let exportType = c.courseType || "none";
-            let exportInd = c.isIndependent ? "1" : "0";
-            let exportSem = c.semester || "3"; 
-
-            if (c.parentId) {
-                let siblings = courses.filter(s => s.parentId === c.parentId).sort((a,b) => a.name.localeCompare(b.name));
-                siblings.forEach(sib => processedIds.add(sib.id));
-                exportName = exportName.replace(/\(\d+\)$/, '');
-                exportTimeString = getAllScheduleKeys(siblings.map(s => s.id));
-            } else {
-                processedIds.add(c.id);
-                exportTimeString = getAllScheduleKeys([c.id]);
+        // 2. 搜尋所有年份的資料 (114-120 或更多)
+        for (let i = 0; i < localStorage.length; i++) {
+            let key = localStorage.key(i);
+            if (key.startsWith('courses_') || 
+                key.startsWith('schedule_') || 
+                key.startsWith('teacherColors_') ||
+                key.startsWith('teacherTextColors_') ||
+                key.startsWith('teacherAvailability_')) {
+                
+                exportObj[key] = JSON.parse(localStorage.getItem(key));
             }
+        }
 
-            let line = `${exportName}|${exportTeacher}|${exportTimeString}|${exportGrades}|${exportType}|${exportInd}|${exportSem}`;
-            lines.push(line);
-        });
-
-        lines.push("");
-        lines.push("[TEACHER_META]");
-        Object.keys(teacherColors).forEach(t => {
-            let color = teacherColors[t];
-            let textColor = teacherTextColors[t] || "black";
-            let avail = teacherAvailability[t] ? teacherAvailability[t].join(';') : "";
-            lines.push(`${t}|${color}|${avail}|${textColor}`);
-        });
-
-        lines.push("}");
+        let jsonString = JSON.stringify(exportObj, null, 2);
+        let blob = new Blob([jsonString], {type: "application/json"});
+        let url = URL.createObjectURL(blob);
+        let a = document.createElement('a');
+        a.href = url;
+        a.download = `東海電機排課_全學年備份_${new Date().toISOString().slice(0,10)}.json`;
+        a.click();
         
-        let output = lines.join("\n");
-        let blob = new Blob([output], {type:'text/plain'});
-        let a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `課程表_${currentYear}學年_${new Date().toISOString().slice(0,10)}.txt`; a.click(); 
-        Swal.fire('導出成功', `已下載 ${currentYear} 學年度文字檔格式`, 'success');
+        Swal.fire('導出成功', '已下載包含所有學年資料的 JSON 備份檔。', 'success');
     }
 
     function getAllScheduleKeys(courseIds) {
@@ -2231,207 +2220,248 @@
 
     function importData(input) {
         if(isReadOnly) return;
+        let file = input.files[0];
+        if (!file) return;
+
         let r = new FileReader(); 
+        
         r.onload = e => { 
             try { 
-                let text = e.target.result;
-                text = text.trim();
-                if (text.startsWith("{")) text = text.substring(1);
-                if (text.endsWith("}")) text = text.substring(0, text.length - 1);
+                let content = e.target.result;
                 
-                let lines = text.split('\n');
+                // 判斷是舊版 TXT 還是新版 JSON
+                if (file.name.endsWith('.json') || content.trim().startsWith('{')) {
+                    // JSON 全備份導入
+                    let data = JSON.parse(content);
+                    
+                    // 恢復全域設定
+                    if (data.settings) localStorage.setItem('settings', JSON.stringify(data.settings));
+                    if (data.collapsedTeachers) localStorage.setItem('collapsedTeachers', JSON.stringify(data.collapsedTeachers));
+                    if (data.lastActiveYear) localStorage.setItem('lastActiveYear', data.lastActiveYear);
+                    
+                    // 恢復所有學年資料
+                    for (let key in data) {
+                        if (key.startsWith('courses_') || 
+                            key.startsWith('schedule_') || 
+                            key.startsWith('teacherColors_') ||
+                            key.startsWith('teacherTextColors_') ||
+                            key.startsWith('teacherAvailability_')) {
+                            localStorage.setItem(key, JSON.stringify(data[key]));
+                        }
+                    }
+                    
+                    Swal.fire({
+                        title: '全備份導入成功',
+                        text: '所有學年的資料已恢復，頁面將重新整理。',
+                        icon: 'success',
+                        timer: 2000,
+                        showConfirmButton: false
+                    }).then(() => {
+                        location.reload();
+                    });
+
+                } else {
+                    // 舊版 TXT 單一學年導入 (維持原邏輯，但需適配當前學年)
+                    importLegacyTxt(content);
+                }
+            } catch(err) { 
+                console.error(err);
+                Swal.fire('匯入失敗', '檔案格式錯誤，請確認。', 'error'); 
+            } 
+        }; 
+        r.readAsText(file);
+    }
+
+    function importLegacyTxt(text) {
+        text = text.trim();
+        if (text.startsWith("{")) text = text.substring(1);
+        if (text.endsWith("}")) text = text.substring(0, text.length - 1);
+        
+        let lines = text.split('\n');
+        
+        let newCourses = [];
+        let newSchedule = {};
+        let newTeacherColors = {}; 
+        let newTeacherTextColors = {};
+        let newTeacherAvailability = {};
+        
+        let mode = "COURSES"; 
+
+        const dayMapRev = { '星期一':'1', '星期二':'2', '星期三':'3', '星期四':'4', '星期五':'5', '星期六':'6', '星期日':'7' };
+
+        lines.forEach(line => {
+            line = line.trim();
+            if (!line) return;
+
+            if (line === "[COLORS]") { mode = "COLORS"; return; } 
+            if (line === "[TEACHER_META]") { mode = "TEACHER_META"; return; }
+
+            if (mode === "COLORS") {
+                let parts = line.split('|').map(s => s.trim());
+                if(parts.length >= 2) newTeacherColors[parts[0]] = parts[1];
+
+            } else if (mode === "TEACHER_META") {
+                let parts = line.split('|').map(s => s.trim());
+                if(parts.length >= 2) {
+                    let t = parts[0];
+                    newTeacherColors[t] = parts[1];
+                    if(parts.length >= 3 && parts[2] !== "") {
+                        newTeacherAvailability[t] = parts[2].split(';');
+                    }
+                    if(parts.length >= 4) {
+                        newTeacherTextColors[t] = parts[3];
+                    } else {
+                        newTeacherTextColors[t] = 'black';
+                    }
+                }
+
+            } else if (mode === "COURSES") {
+                let parts = line.split('|').map(s => s.trim());
+                if (parts.length < 2) return; 
+
+                let name = parts[0];
+                let teacher = parts[1];
+                let timeRaw = parts[2]; 
                 
-                let newCourses = [];
-                let newSchedule = {};
-                let newTeacherColors = {}; 
-                let newTeacherTextColors = {};
-                let newTeacherAvailability = {};
+                let gradesRaw = (parts.length >= 4) ? parts[3] : "";
+                let allowedGrades = [];
+                if (gradesRaw && gradesRaw !== "") {
+                    allowedGrades = gradesRaw.split(';').map(g => parseInt(g));
+                }
                 
-                let mode = "COURSES"; 
+                let cType = (parts.length >= 5) ? parts[4] : "none";
+                let isInd = (parts.length >= 6) ? (parts[5] === "1") : false;
+                
+                let cSem = (parts.length >= 7) ? parseInt(parts[6]) : 3;
+                if(isNaN(cSem)) cSem = 3;
 
-                const dayMapRev = { '星期一':'1', '星期二':'2', '星期三':'3', '星期四':'4', '星期五':'5', '星期六':'6', '星期日':'7' };
-
-                lines.forEach(line => {
-                    line = line.trim();
-                    if (!line) return;
-
-                    if (line === "[COLORS]") { mode = "COLORS"; return; } 
-                    if (line === "[TEACHER_META]") { mode = "TEACHER_META"; return; }
-
-                    if (mode === "COLORS") {
-                        let parts = line.split('|').map(s => s.trim());
-                        if(parts.length >= 2) newTeacherColors[parts[0]] = parts[1];
-
-                    } else if (mode === "TEACHER_META") {
-                        let parts = line.split('|').map(s => s.trim());
-                        if(parts.length >= 2) {
-                            let t = parts[0];
-                            newTeacherColors[t] = parts[1];
-                            if(parts.length >= 3 && parts[2] !== "") {
-                                newTeacherAvailability[t] = parts[2].split(';');
-                            }
-                            if(parts.length >= 4) {
-                                newTeacherTextColors[t] = parts[3];
-                            } else {
-                                newTeacherTextColors[t] = 'black';
-                            }
+                if (teacher === "校必修") {
+                    let timeSegments = timeRaw.split(';').map(s => s.trim()).filter(s => s !== "");
+                    let totalPeriods = 0;
+                    timeSegments.forEach(seg => {
+                        let match = seg.match(/^(\d+)\s+([^/]+)\/(.+)$/);
+                        if (match) {
+                            let pList = match[3].split(',').map(p => p.trim());
+                            totalPeriods += pList.length;
                         }
+                    });
 
-                    } else if (mode === "COURSES") {
-                        let parts = line.split('|').map(s => s.trim());
-                        if (parts.length < 2) return; 
+                    let cId = Date.now() + Math.random().toString();
+                    newCourses.push({ 
+                        id: cId, name, teacher, periods: totalPeriods, isSplit: false, 
+                        allowedGrades, courseType: cType, isIndependent: true, isDeptReq: true, isLocked: true, semester: 3 
+                    });
 
-                        let name = parts[0];
-                        let teacher = parts[1];
-                        let timeRaw = parts[2]; 
-                        
-                        let gradesRaw = (parts.length >= 4) ? parts[3] : "";
-                        let allowedGrades = [];
-                        if (gradesRaw && gradesRaw !== "") {
-                            allowedGrades = gradesRaw.split(';').map(g => parseInt(g));
-                        }
-                        
-                        let cType = (parts.length >= 5) ? parts[4] : "none";
-                        let isInd = (parts.length >= 6) ? (parts[5] === "1") : false;
-                        
-                        let cSem = (parts.length >= 7) ? parseInt(parts[6]) : 3;
-                        if(isNaN(cSem)) cSem = 3;
-
-                        if (teacher === "校必修") {
-                            let timeSegments = timeRaw.split(';').map(s => s.trim()).filter(s => s !== "");
-                            let totalPeriods = 0;
-                            timeSegments.forEach(seg => {
-                                let match = seg.match(/^(\d+)\s+([^/]+)\/(.+)$/);
-                                if (match) {
-                                    let pList = match[3].split(',').map(p => p.trim());
-                                    totalPeriods += pList.length;
-                                }
-                            });
-
-                            let cId = Date.now() + Math.random().toString();
-                            newCourses.push({ 
-                                id: cId, name, teacher, periods: totalPeriods, isSplit: false, 
-                                allowedGrades, courseType: cType, isIndependent: true, isDeptReq: true, isLocked: true, semester: 3 
-                            });
-
-                            timeSegments.forEach(seg => {
-                                let match = seg.match(/^(\d+)\s+([^/]+)\/(.+)$/);
-                                if (match) {
-                                    let grade = match[1];
-                                    let dayStr = match[2];
-                                    let periodsStr = match[3];
-                                    let day = dayMapRev[dayStr];
-                                    let pList = periodsStr.split(',').map(p => p.trim());
-                                    if (day && grade) {
-                                        pList.forEach(p => {
-                                            let key = `${day}-${grade}-${p}`;
-                                            if(!newSchedule[key]) newSchedule[key] = [];
-                                            newSchedule[key].push(cId);
-                                        });
-                                    }
-                                }
-                            });
-                            return; 
-                        }
-
-                        if (!timeRaw || timeRaw.trim() === "") {
-                            newCourses.push({ 
-                                id: Date.now() + Math.random().toString(), 
-                                name, teacher, periods: 3, isSplit: false, 
-                                allowedGrades, courseType: cType, isIndependent: isInd, semester: cSem
-                            });
-                            return;
-                        }
-
-                        let timeSegments = timeRaw.split(';').map(s => s.trim()).filter(s => s !== "");
-                        
-                        if (timeSegments.length > 1) {
-                            let parentId = Date.now() + Math.random().toString();
-                            timeSegments.forEach((seg, idx) => {
-                                let match = seg.match(/^(\d+)\s+([^/]+)\/(.+)$/);
-                                if (match) {
-                                    let grade = match[1];
-                                    let dayStr = match[2];
-                                    let periodsStr = match[3];
-                                    let day = dayMapRev[dayStr];
-                                    let pList = periodsStr.split(',').map(p => p.trim());
-                                    let cId = parentId + "_" + idx;
-                                    
-                                    newCourses.push({
-                                        id: cId, parentId: parentId,
-                                        name: name + `(${idx+1})`, teacher, 
-                                        periods: pList.length, isSplit: true, 
-                                        allowedGrades, courseType: cType, isIndependent: isInd, semester: cSem
-                                    });
-                                    if (day && grade) {
-                                        pList.forEach(p => {
-                                            let key = `${day}-${grade}-${p}`;
-                                            if(!newSchedule[key]) newSchedule[key] = [];
-                                            newSchedule[key].push(cId);
-                                        });
-                                    }
-                                }
-                            });
-                        } else {
-                            let seg = timeSegments[0];
-                            let cId = Date.now() + Math.random().toString();
-                            let match = seg.match(/^(\d+)\s+([^/]+)\/(.+)$/);
-                            if (match) {
-                                let grade = match[1];
-                                let dayStr = match[2];
-                                let periodsStr = match[3];
-                                let day = dayMapRev[dayStr];
-                                let pList = periodsStr.split(',').map(p => p.trim());
-                                if (day && grade) {
-                                    pList.forEach(p => {
-                                        let key = `${day}-${grade}-${p}`;
-                                        if(!newSchedule[key]) newSchedule[key] = [];
-                                        newSchedule[key].push(cId);
-                                    });
-                                }
-                                newCourses.push({ 
-                                    id: cId, name, teacher, periods: pList.length, isSplit: false, 
-                                    allowedGrades, courseType: cType, isIndependent: isInd, semester: cSem
+                    timeSegments.forEach(seg => {
+                        let match = seg.match(/^(\d+)\s+([^/]+)\/(.+)$/);
+                        if (match) {
+                            let grade = match[1];
+                            let dayStr = match[2];
+                            let periodsStr = match[3];
+                            let day = dayMapRev[dayStr];
+                            let pList = periodsStr.split(',').map(p => p.trim());
+                            if (day && grade) {
+                                pList.forEach(p => {
+                                    let key = `${day}-${grade}-${p}`;
+                                    if(!newSchedule[key]) newSchedule[key] = [];
+                                    newSchedule[key].push(cId);
                                 });
                             }
                         }
-                    }
-                });
+                    });
+                    return; 
+                }
 
-                newCourses.forEach(c => {
-                    let isDeptReq = (c.teacher === "校必修");
-                    if(isDeptReq) {
-                        c.isDeptReq = true;
-                        c.isLocked = true;
-                    }
-                    if(c.teacher !== "校必修" && !newTeacherColors[c.teacher]) {
-                        newTeacherColors[c.teacher] = SOFT_COLORS[Object.keys(newTeacherColors).length % SOFT_COLORS.length];
-                    }
-                });
+                if (!timeRaw || timeRaw.trim() === "") {
+                    newCourses.push({ 
+                        id: Date.now() + Math.random().toString(), 
+                        name, teacher, periods: 3, isSplit: false, 
+                        allowedGrades, courseType: cType, isIndependent: isInd, semester: cSem
+                    });
+                    return;
+                }
 
-                courses = newCourses;
-                schedule = newSchedule;
-                teacherColors = newTeacherColors;
-                teacherTextColors = newTeacherTextColors;
-                teacherAvailability = newTeacherAvailability;
+                let timeSegments = timeRaw.split(';').map(s => s.trim()).filter(s => s !== "");
                 
-                save(); 
-                location.reload(); 
-                
-            } catch(err) { 
-                console.error(err);
-                Swal.fire('匯入失敗', '檔案格式錯誤，請確認文字檔格式正確。', 'error'); 
-            } 
-        }; 
-        r.readAsText(input.files[0]);
+                if (timeSegments.length > 1) {
+                    let parentId = Date.now() + Math.random().toString();
+                    timeSegments.forEach((seg, idx) => {
+                        let match = seg.match(/^(\d+)\s+([^/]+)\/(.+)$/);
+                        if (match) {
+                            let grade = match[1];
+                            let dayStr = match[2];
+                            let periodsStr = match[3];
+                            let day = dayMapRev[dayStr];
+                            let pList = periodsStr.split(',').map(p => p.trim());
+                            let cId = parentId + "_" + idx;
+                            
+                            newCourses.push({
+                                id: cId, parentId: parentId,
+                                name: name + `(${idx+1})`, teacher, 
+                                periods: pList.length, isSplit: true, 
+                                allowedGrades, courseType: cType, isIndependent: isInd, semester: cSem
+                            });
+                            if (day && grade) {
+                                pList.forEach(p => {
+                                    let key = `${day}-${grade}-${p}`;
+                                    if(!newSchedule[key]) newSchedule[key] = [];
+                                    newSchedule[key].push(cId);
+                                });
+                            }
+                        }
+                    });
+                } else {
+                    let seg = timeSegments[0];
+                    let cId = Date.now() + Math.random().toString();
+                    let match = seg.match(/^(\d+)\s+([^/]+)\/(.+)$/);
+                    if (match) {
+                        let grade = match[1];
+                        let dayStr = match[2];
+                        let periodsStr = match[3];
+                        let day = dayMapRev[dayStr];
+                        let pList = periodsStr.split(',').map(p => p.trim());
+                        if (day && grade) {
+                            pList.forEach(p => {
+                                let key = `${day}-${grade}-${p}`;
+                                if(!newSchedule[key]) newSchedule[key] = [];
+                                newSchedule[key].push(cId);
+                            });
+                        }
+                        newCourses.push({ 
+                            id: cId, name, teacher, periods: pList.length, isSplit: false, 
+                            allowedGrades, courseType: cType, isIndependent: isInd, semester: cSem
+                        });
+                    }
+                }
+            }
+        });
+
+        newCourses.forEach(c => {
+            let isDeptReq = (c.teacher === "校必修");
+            if(isDeptReq) {
+                c.isDeptReq = true;
+                c.isLocked = true;
+            }
+            if(c.teacher !== "校必修" && !newTeacherColors[c.teacher]) {
+                newTeacherColors[c.teacher] = SOFT_COLORS[Object.keys(newTeacherColors).length % SOFT_COLORS.length];
+            }
+        });
+
+        courses = newCourses;
+        schedule = newSchedule;
+        teacherColors = newTeacherColors;
+        teacherTextColors = newTeacherTextColors;
+        teacherAvailability = newTeacherAvailability;
+        
+        save(); 
+        location.reload(); 
     }
 
     // Initialize UI state
     window.addEventListener('load', () => {
         checkUrlParams();
-        updateUIForMode(); // Initially read only
+        updateUIForMode(); 
         
-        // Populate settings inputs based on loaded data
         document.getElementById('showSat').checked = settings.sat; 
         document.getElementById('showSun').checked = settings.sun;
         [1,2,3,4].forEach(i => document.getElementById('g'+i).checked = settings.wd[i-1]);
