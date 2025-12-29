@@ -143,7 +143,6 @@
         .card-title { font-weight: 700; font-size: 13px; color: #2c3e50; }
         .tag-split { background: #ffeaa7; color: #d35400; font-size: 10px; padding: 1px 4px; border-radius: 3px; font-weight: bold; }
         
-        /* 學期標籤樣式 */
         .sem-tag {
             position: absolute;
             top: 2px;
@@ -154,9 +153,9 @@
             color: white;
             font-weight: bold;
         }
-        .sem-1 { background-color: #3498db; } /* 上 */
-        .sem-2 { background-color: #e67e22; } /* 下 */
-        .sem-3 { background-color: #9b59b6; } /* 全 */
+        .sem-1 { background-color: #3498db; } 
+        .sem-2 { background-color: #e67e22; } 
+        .sem-3 { background-color: #9b59b6; } 
 
         .btn-actions { display: flex; gap: 4px; margin-top: 4px; }
         .btn-actions button { flex: 1; border: none; padding: 2px; border-radius: 3px; font-size: 10px; cursor: pointer; color: white; transition: opacity 0.2s; }
@@ -286,9 +285,8 @@
             justify-content: center;
             align-items: center;
             text-align: center;
-            /* 移除固定字體大小，改用 JS 動態計算 */
             font-weight: 700;
-            line-height: 1.1; /* 縮小行距以容納更多內容 */
+            line-height: 1.1; 
             color: #222; 
             overflow: hidden;
             cursor: grab; 
@@ -456,7 +454,15 @@
             <div class="level-left">
                 <h2 class="title is-6 mr-2" style="font-size: 1rem;">📅 東海電機排課模擬器 by HC <span id="currentYearLabel" class="tag is-primary is-light is-rounded ml-1"></span> <span id="currentSemLabel" class="tag is-info is-light is-rounded ml-1" style="font-weight:normal;"></span></h2>
                 
-                <div id="firebaseUserDisplay">
+                <div class="control ml-2">
+                    <div class="select is-small is-rounded is-primary">
+                        <select id="teacherFilterSelect" onchange="applyTeacherFilter()">
+                            <option value="ALL">👨‍🏫 全部教師</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div id="firebaseUserDisplay" class="ml-2">
                     <img id="userAvatar" class="user-avatar" src="" alt="">
                     <span id="userName" style="font-size: 0.75rem; margin-right: 5px;"></span>
                 </div>
@@ -864,6 +870,9 @@
     let teacherAvailability = {};
     let teacherTextColors = {}; 
     
+    // Teacher Filter State
+    let currentTeacherFilter = 'ALL';
+
     let settings = JSON.parse(localStorage.getItem('settings')) || {
         sat: true, sun: false, wd: [true,true,true,true], we: [true,true,true,true], currentSemester: 1
     };
@@ -1296,7 +1305,44 @@
         return { events, maxTracks: Math.max(1, tracks.length) };
     }
 
+    // Teacher Filter Logic
+    function applyTeacherFilter() {
+        currentTeacherFilter = document.getElementById('teacherFilterSelect').value;
+        render(); // Re-render whole table
+    }
+
+    function renderTeacherFilterOptions() {
+        let select = document.getElementById('teacherFilterSelect');
+        let teachers = new Set();
+        courses.forEach(c => teachers.add(c.teacher));
+        
+        // Convert to array and sort
+        let sortedTeachers = Array.from(teachers).sort();
+        
+        // Save current selection if possible
+        let oldVal = select.value;
+        
+        // Rebuild options
+        select.innerHTML = '<option value="ALL">👨‍🏫 全部教師</option>';
+        sortedTeachers.forEach(t => {
+            let opt = document.createElement('option');
+            opt.value = t;
+            opt.innerText = t;
+            select.appendChild(opt);
+        });
+        
+        if (sortedTeachers.includes(oldVal)) {
+            select.value = oldVal;
+        } else {
+            select.value = "ALL";
+            currentTeacherFilter = "ALL";
+        }
+    }
+
     function render() { 
+        // Populate teacher filter first
+        renderTeacherFilterOptions();
+
         let teacherCounts = {};
         courses.forEach(c => {
             let t = c.teacher;
@@ -1334,22 +1380,23 @@
         const blocks = document.querySelectorAll('.course-block');
         blocks.forEach(block => {
             const width = block.getBoundingClientRect().width;
-            const height = block.getBoundingClientRect().height;
             const textLength = block.innerText.length;
 
-            // 基礎大小：寬度的 1/3.2 (讓字體更大)
-            let calcSize = width / 3.2;
+            // Updated Algorithm: Make fonts bigger
+            // Base size: width / 3 (was 4.5 then 3.2)
+            let calcSize = width / 3;
             
-            // 如果課程名稱很短 (<= 4字)，即使格子窄，也可以稍微大一點，因為不用換行太多次
+            // Short text boost
             if (textLength <= 4) {
                 calcSize = width / 2.2;
             }
 
-            // 限制範圍：最小 11px (閱讀底線)，最大 16px (使用者要求)
-            // 若格子實在太窄 (<33px)，容許縮小到 9px
+            // Constraints: Min 11px, Max 16px
             let finalSize = Math.floor(calcSize);
             
             if (finalSize > 16) finalSize = 16;
+            
+            // Allow drop to 9px only if extremely narrow
             if (finalSize < 11) {
                 finalSize = (width < 30) ? 9 : 11;
             }
@@ -1682,6 +1729,9 @@
                 startingEvents.forEach(ev => {
                     let course = courses.find(c => c.id === ev.cId);
                     if(course) {
+                        // Apply Teacher Filter Here
+                        if (currentTeacherFilter !== 'ALL' && course.teacher !== currentTeacherFilter) return;
+
                         let div = document.createElement('div');
                         
                         if (course.isDeptReq) {
@@ -2163,16 +2213,13 @@
         render(); 
     }
     
-    // 全學年備份導出
     function exportAllData() {
         let exportObj = {};
         
-        // 1. 全域設定
         exportObj['settings'] = JSON.parse(localStorage.getItem('settings'));
         exportObj['collapsedTeachers'] = JSON.parse(localStorage.getItem('collapsedTeachers'));
         exportObj['lastActiveYear'] = localStorage.getItem('lastActiveYear');
 
-        // 2. 搜尋所有年份的資料 (114-120 或更多)
         for (let i = 0; i < localStorage.length; i++) {
             let key = localStorage.key(i);
             if (key.startsWith('courses_') || 
@@ -2237,17 +2284,13 @@
             try { 
                 let content = e.target.result;
                 
-                // 判斷是舊版 TXT 還是新版 JSON
                 if (file.name.endsWith('.json') || content.trim().startsWith('{')) {
-                    // JSON 全備份導入
                     let data = JSON.parse(content);
                     
-                    // 恢復全域設定
                     if (data.settings) localStorage.setItem('settings', JSON.stringify(data.settings));
                     if (data.collapsedTeachers) localStorage.setItem('collapsedTeachers', JSON.stringify(data.collapsedTeachers));
                     if (data.lastActiveYear) localStorage.setItem('lastActiveYear', data.lastActiveYear);
                     
-                    // 恢復所有學年資料
                     for (let key in data) {
                         if (key.startsWith('courses_') || 
                             key.startsWith('schedule_') || 
@@ -2269,7 +2312,6 @@
                     });
 
                 } else {
-                    // 舊版 TXT 單一學年導入 (維持原邏輯，但需適配當前學年)
                     importLegacyTxt(content);
                 }
             } catch(err) { 
@@ -2455,7 +2497,6 @@
             }
         });
 
-        // 更新至全域變數並儲存至當前學年 Key
         courses = newCourses;
         schedule = newSchedule;
         teacherColors = newTeacherColors;
@@ -2469,9 +2510,8 @@
     // Initialize UI state
     window.addEventListener('load', () => {
         checkUrlParams();
-        updateUIForMode(); // Initially read only
+        updateUIForMode(); 
         
-        // Populate settings inputs based on loaded data
         document.getElementById('showSat').checked = settings.sat; 
         document.getElementById('showSun').checked = settings.sun;
         [1,2,3,4].forEach(i => document.getElementById('g'+i).checked = settings.wd[i-1]);
